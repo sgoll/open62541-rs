@@ -1,5 +1,6 @@
-use std::{fmt, ptr};
+use std::{fmt, ptr, str};
 
+use der::{Decode as _, DecodePem as _, ErrorKind};
 use open62541_sys::UA_CreateCertificate;
 use zeroize::Zeroizing;
 
@@ -37,23 +38,24 @@ impl Certificate {
         unsafe { self.0.as_bytes_unchecked() }
     }
 
+    #[allow(dead_code)] // --no-default-features
+    #[must_use]
+    fn as_str(&self) -> Option<&str> {
+        str::from_utf8(self.as_bytes()).ok()
+    }
+
     /// Parses certificate.
     ///
     /// # Errors
     ///
     /// This fails when the certificate cannot be parsed or is invalid.
-    #[cfg(feature = "x509")]
-    pub fn into_x509(
-        self,
-    ) -> Result<x509_certificate::X509Certificate, x509_certificate::X509CertificateError> {
-        use x509_certificate::{X509Certificate, X509CertificateError};
-
+    pub fn x509(&self) -> Result<x509_cert::Certificate, der::Error> {
         // Apply heuristic to get certificates from both DER and PEM format. Try PEM first because
         // the implementation first extracts DER data from PEM and can tell us whether this failed
         // (or the certificate itself was invalid).
-        X509Certificate::from_pem(self.as_bytes()).or_else(|err| match err {
-            X509CertificateError::PemDecode(_) => X509Certificate::from_der(self.as_bytes()),
-            err => Err(err),
+        x509_cert::Certificate::from_pem(self.as_bytes()).or_else(|err| match err.kind() {
+            ErrorKind::Pem(_) => x509_cert::Certificate::from_der(self.as_bytes()),
+            _ => Err(err),
         })
     }
 
@@ -98,6 +100,38 @@ impl PrivateKey {
     pub fn as_bytes(&self) -> &[u8] {
         // SAFETY: We always initialize inner value.
         unsafe { self.0.as_bytes_unchecked() }
+    }
+
+    #[allow(dead_code)] // --no-default-features
+    #[must_use]
+    fn as_str(&self) -> Option<&str> {
+        str::from_utf8(self.as_bytes()).ok()
+    }
+
+    /// Parses private key.
+    ///
+    /// # Errors
+    ///
+    /// This fails when the private key cannot be parsed or is invalid.
+    pub fn pkcs1(&self) -> Result<pkcs1::RsaPrivateKey<'_>, der::Error> {
+        // We cannot parse private key data from PEM because `RsaPrivateKey` refers to the data in
+        // `&self` instead of owning it.
+        pkcs1::RsaPrivateKey::from_der(self.as_bytes())
+    }
+
+    /// Parses private key.
+    ///
+    /// # Errors
+    ///
+    /// This fails when the private key cannot be parsed or is invalid.
+    pub fn pkcs8(&self) -> Result<pkcs8::PrivateKeyInfoOwned, der::Error> {
+        // Apply heuristic to get private keys from both DER and PEM format. Try PEM first because
+        // the implementation first extracts DER data from PEM and can tell us whether this failed
+        // (or the private key itself was invalid).
+        pkcs8::PrivateKeyInfoOwned::from_pem(self.as_bytes()).or_else(|err| match err.kind() {
+            ErrorKind::Pem(_) => pkcs8::PrivateKeyInfoOwned::from_der(self.as_bytes()),
+            _ => Err(err),
+        })
     }
 
     pub(crate) fn as_byte_string(&self) -> &ua::ByteString {

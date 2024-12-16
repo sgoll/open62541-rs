@@ -1,6 +1,9 @@
 use anyhow::Context as _;
 use itertools::Itertools as _;
-use open62541::{Certificate, ClientBuilder};
+use open62541::{
+    der::{pem::LineEnding, EncodePem as _},
+    Certificate, ClientBuilder,
+};
 
 fn main() -> anyhow::Result<()> {
     env_logger::init();
@@ -15,7 +18,7 @@ fn main() -> anyhow::Result<()> {
             endpoint_description
                 .server_certificate()
                 .as_bytes()
-                .map(|bytes| Certificate::from_bytes(bytes).into_x509())
+                .map(|bytes| Certificate::from_bytes(bytes).x509())
         })
         .collect::<Result<Vec<_>, _>>()
         .context("parse certificates")?;
@@ -23,7 +26,7 @@ fn main() -> anyhow::Result<()> {
     // Include consecutive (!) identical certificates only once.
     let unique_certificates = server_certificates
         .into_iter()
-        .dedup_by(|a, b| a.serial_number_asn1() == b.serial_number_asn1())
+        .dedup_by(|a, b| a.tbs_certificate().serial_number() == b.tbs_certificate().serial_number())
         .collect::<Vec<_>>();
 
     println!("Found {} server certificate(s)", unique_certificates.len());
@@ -32,35 +35,27 @@ fn main() -> anyhow::Result<()> {
         println!();
         println!("# Certificate {}", index + 1);
         println!(
-            "Subject common name: {:?}",
-            certificate.subject_common_name()
-        );
-        println!("Key algorithm: {:?}", certificate.key_algorithm());
-        println!(
-            "Signature algorithm: {:?}",
-            certificate.signature_algorithm()
+            "Subject common name: {}",
+            certificate.tbs_certificate().subject()
         );
         println!(
-            "Validity not before: {:?}",
-            certificate.validity_not_before()
-        );
-        println!("Validity not after: {:?}", certificate.validity_not_after());
-        println!(
-            "Fingerprint (SHA-1): {:?}",
-            certificate
-                .sha1_fingerprint()
-                .context("SHA-1 fingerprint")?
+            "Validity not before: {}",
+            certificate.tbs_certificate().validity().not_before
         );
         println!(
-            "Fingerprint (SHA-256): {:?}",
-            certificate
-                .sha256_fingerprint()
-                .context("SHA-256 fingerprint")?
+            "Validity not after: {}",
+            certificate.tbs_certificate().validity().not_after
+        );
+        println!(
+            "Serial number: {}",
+            certificate.tbs_certificate().serial_number()
         );
         println!();
         println!(
             "{}",
-            certificate.encode_pem().context("encode certificate")?
+            certificate
+                .to_pem(LineEnding::LF)
+                .context("get certificate PEM")?
         );
     }
 

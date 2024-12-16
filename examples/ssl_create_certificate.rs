@@ -1,5 +1,8 @@
 use anyhow::Context as _;
-use open62541::ua;
+use open62541::{
+    der::{pem::LineEnding, EncodePem as _},
+    ua,
+};
 
 fn main() -> anyhow::Result<()> {
     env_logger::init();
@@ -17,8 +20,10 @@ fn main() -> anyhow::Result<()> {
 
     let params = ua::KeyValueMap::from_slice(&[
         (
+            // We use a reduced key size to make this example run faster. Use a larger key size for
+            // production purposes.
             &ua::QualifiedName::ns0("key-size-bits"),
-            &ua::Variant::scalar(ua::UInt16::new(4096)),
+            &ua::Variant::scalar(ua::UInt16::new(1024)),
         ),
         (
             &ua::QualifiedName::ns0("expires-in-days"),
@@ -26,46 +31,47 @@ fn main() -> anyhow::Result<()> {
         ),
     ]);
 
-    let (certificate, _private_key) = open62541::create_certificate(
+    let (certificate, private_key) = open62541::create_certificate(
         &subject,
         &subject_alt_name,
-        &ua::CertificateFormat::DER,
+        &ua::CertificateFormat::PEM,
         Some(&params),
     )
     .context("create certificate")?;
 
-    let certificate = certificate.into_x509().context("parse certificate")?;
+    let certificate = certificate.x509().context("parse certificate")?;
 
     println!(
-        "Subject common name: {:?}",
-        certificate.subject_common_name()
-    );
-    println!("Key algorithm: {:?}", certificate.key_algorithm());
-    println!(
-        "Signature algorithm: {:?}",
-        certificate.signature_algorithm()
+        "Subject common name: {}",
+        certificate.tbs_certificate().subject()
     );
     println!(
-        "Validity not before: {:?}",
-        certificate.validity_not_before()
-    );
-    println!("Validity not after: {:?}", certificate.validity_not_after());
-    println!(
-        "Fingerprint (SHA-1): {:?}",
-        certificate
-            .sha1_fingerprint()
-            .context("SHA-1 fingerprint")?
+        "Validity not before: {}",
+        certificate.tbs_certificate().validity().not_before
     );
     println!(
-        "Fingerprint (SHA-256): {:?}",
-        certificate
-            .sha256_fingerprint()
-            .context("SHA-256 fingerprint")?
+        "Validity not after: {}",
+        certificate.tbs_certificate().validity().not_after
+    );
+    println!(
+        "Serial number: {}",
+        certificate.tbs_certificate().serial_number()
     );
     println!();
     println!(
         "{}",
-        certificate.encode_pem().context("encode certificate")?
+        certificate
+            .to_pem(LineEnding::LF)
+            .context("get certificate PEM")?
+    );
+
+    let private_key = private_key.pkcs1().context("parse private key")?;
+
+    println!(
+        "{}",
+        private_key
+            .to_pem(LineEnding::LF)
+            .context("get private key PEM")?
     );
 
     Ok(())

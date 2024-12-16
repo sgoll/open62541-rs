@@ -224,15 +224,13 @@ mod data_value;
 mod error;
 mod server;
 mod service;
-#[cfg(feature = "mbedtls")]
+#[cfg(feature = "ssl")]
 mod ssl;
 mod traits;
 pub mod ua;
 mod userdata;
 mod value;
 
-#[cfg(feature = "mbedtls")]
-pub use self::ssl::{create_certificate, Certificate, PrivateKey};
 #[cfg(feature = "tokio")]
 pub use self::{
     async_client::AsyncClient,
@@ -260,6 +258,12 @@ pub(crate) use self::{
     data_type::{bitmask_ops, data_type, enum_variants},
     service::{ServiceRequest, ServiceResponse},
     value::{ArrayValue, NonScalarValue},
+};
+pub use open62541_sys as sys;
+#[cfg(feature = "ssl")]
+pub use {
+    self::ssl::{create_certificate, Certificate, PrivateKey},
+    der,
 };
 
 /// IANA-assigned OPC UA port number.
