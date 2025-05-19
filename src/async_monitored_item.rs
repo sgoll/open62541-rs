@@ -397,8 +397,6 @@ pub trait MonitoredItemKind: sealed::MonitoredItemKind + Send + Sync + 'static {
 pub struct DataChange<T: Attribute>(PhantomData<T>);
 
 impl<T: DataChangeAttribute + Send + Sync + 'static> MonitoredItemKind for DataChange<T> {
-    // TODO: Use more specific type. Return appropriate value for attribute `T`, but still allow
-    // access to other data from `DataValue` such as timestamps.
     type Value = ua::DataValue;
 
     fn map_value(value: MonitoredItemValue) -> Self::Value {
