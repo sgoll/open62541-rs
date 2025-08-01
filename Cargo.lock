@@ -651,7 +651,7 @@ dependencies = [
 [[package]]
 name = "open62541-sys"
 version = "0.4.17"
-source = "git+https://github.com/sgoll/open62541-sys.git?branch=open62541-1.5#0e07805fa203813a9aa806717eb3978b59dd3dfe"
+source = "git+https://github.com/sgoll/open62541-sys.git?branch=datatype-description#4696cf2ffc4c69292ec6cf954c1fa4dbce5c44ed"
 dependencies = [
  "bindgen",
  "cc",
