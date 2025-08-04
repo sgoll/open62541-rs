@@ -1,6 +1,6 @@
 use std::{
     ffi::c_void,
-    slice,
+    mem, ptr, slice,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -10,8 +10,9 @@ use std::{
 };
 
 use open62541_sys::{
-    UA_Client, UA_Client_disconnectAsync, UA_Client_run_iterate, UA_UInt32,
-    __UA_Client_AsyncService, UA_STATUSCODE_BADCONNECTIONCLOSED, UA_STATUSCODE_BADDISCONNECT,
+    UA_Client, UA_Client_disconnectAsync, UA_Client_getRemoteDataTypes, UA_Client_run_iterate,
+    UA_UInt32, __UA_Client_AsyncService, UA_STATUSCODE_BADCONNECTIONCLOSED,
+    UA_STATUSCODE_BADDISCONNECT,
 };
 use tokio::{sync::oneshot, task, time::Instant};
 
@@ -150,6 +151,37 @@ impl AsyncClient {
         // handling to keep on running until the connection has been taken down which then makes the
         // task finish by itself.
         let _unused = task::spawn_blocking(move || self.join_background_task(false)).await;
+    }
+
+    pub fn get_remote_data_types(&self) -> Result<ua::DataTypeArray> {
+        let mut custom_types = ptr::null_mut();
+
+        let status_code = ua::StatusCode::new(unsafe {
+            UA_Client_getRemoteDataTypes(
+                // SAFETY: Cast to `mut` pointer, function is marked `UA_THREADSAFE`.
+                self.client.as_ptr().cast_mut(),
+                0,
+                ptr::null(),
+                &raw mut custom_types,
+            )
+        });
+        Error::verify_good(&status_code)?;
+
+        Ok(unsafe { ua::DataTypeArray::from_raw(custom_types) })
+    }
+
+    pub fn set_custom_data_types(&self, custom_types: ua::DataTypeArray) -> Result<()> {
+        let config = unsafe { self.client.config_mut() };
+
+        // Take ownership of previous custom data types to drop and clean up.
+        let _custom_types = unsafe {
+            ua::DataTypeArray::from_raw(mem::replace(
+                &mut config.customDataTypes,
+                custom_types.into_raw(),
+            ))
+        };
+
+        Ok(())
     }
 
     /// Reads node value.

@@ -1,8 +1,8 @@
 use std::ptr::NonNull;
 
 use open62541_sys::{
-    UA_Client, UA_Client_delete, UA_Client_disconnect, UA_Client_getContext, UA_Client_getState,
-    UA_Client_new, UA_Client_newWithConfig,
+    UA_Client, UA_ClientConfig, UA_Client_delete, UA_Client_disconnect, UA_Client_getConfig,
+    UA_Client_getState, UA_Client_new, UA_Client_newWithConfig,
 };
 
 use crate::{ua, ClientContext, DataType as _, Error};
@@ -110,6 +110,17 @@ impl Client {
             log::warn!("Error while disconnecting client: {error}");
         }
     }
+
+    /// # Safety
+    ///
+    /// The config must only be used for operations that do not conflict with simultaneous execution
+    /// of the client runner.
+    #[must_use]
+    pub(crate) unsafe fn config_mut(&self) -> &mut UA_ClientConfig {
+        // SAFETY: Lifetime of the result matches lifetime of the client.
+        unsafe { UA_Client_getConfig(self.as_ptr().cast_mut()).as_mut() }
+            .expect("require client config")
+    }
 }
 
 impl Drop for Client {
@@ -118,7 +129,9 @@ impl Drop for Client {
 
         // Fetch context pointer before deleting client below, but free associated memory only after
         // client has completely shut down.
-        let context = unsafe { UA_Client_getContext(self.as_mut_ptr()) }.cast::<ClientContext>();
+        let context = unsafe { self.config_mut() }
+            .clientContext
+            .cast::<ClientContext>();
 
         // `UA_Client_delete()` matches `UA_Client_new()`. This may block (!) whenever the client is
         // still connected, for as long as it takes to take down the connection. This can be avoided
