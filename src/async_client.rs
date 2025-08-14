@@ -71,6 +71,36 @@ impl AsyncClient {
     pub(crate) fn from_sync(client: ua::Client) -> Self {
         let client = Arc::new(client);
 
+        //
+
+        let mut custom_types = ptr::null_mut();
+
+        let status_code = ua::StatusCode::new(unsafe {
+            UA_Client_getRemoteDataTypes(
+                // SAFETY: Cast to `mut` pointer, function is marked `UA_THREADSAFE`.
+                client.as_ptr().cast_mut(),
+                0,
+                ptr::null(),
+                &raw mut custom_types,
+            )
+        });
+        Error::verify_good(&status_code).unwrap();
+
+        let custom_types = unsafe { ua::DataTypeArray::from_raw(custom_types) };
+
+        //
+
+        let config = unsafe { client.config_mut() };
+
+        // Take ownership of previous custom data types to drop and clean up.
+        let _custom_types = unsafe {
+            ua::DataTypeArray::from_raw(mem::replace(
+                &mut config.customDataTypes,
+                custom_types.into_raw(),
+            ))
+        };
+
+        //
         let background_cancelled = Arc::new(AtomicBool::new(false));
 
         // Run the event loop concurrently. We do so on a thread where we may block: we need to call
